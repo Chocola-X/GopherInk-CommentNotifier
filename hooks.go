@@ -55,6 +55,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	siteURL = strings.TrimRight(siteURL, "/")
 
 	commentURL, _ := rt.CommentURL(ctx, comment.COID)
+	commentAvatarURL := pluginAvatarURL(ctx, rt, comment.Mail, 72)
 
 	// Deduplicate recipients by normalized email.
 	recipients := make(map[string]notifyContext)
@@ -64,16 +65,17 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		// Notify content author if the commenter is not the author.
 		if cfg["notify_owner"] == "1" && comment.AuthorID != content.AuthorID && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
-				Type:      "owner",
-				ToEmail:   authorUser.Mail,
-				ToName:    authorUser.ScreenName,
-				PostTitle: content.Title,
-				PostURL:   commentURL,
-				Author:    comment.Author,
-				Content:   comment.Text,
-				Time:      formatTime(comment.Created),
-				SiteTitle: siteTitle,
-				SiteURL:   siteURL,
+				Type:            "owner",
+				ToEmail:         authorUser.Mail,
+				ToName:          authorUser.ScreenName,
+				PostTitle:       content.Title,
+				PostURL:         commentURL,
+				Author:          comment.Author,
+				AuthorAvatarURL: commentAvatarURL,
+				Content:         comment.Text,
+				Time:            formatTime(comment.Created),
+				SiteTitle:       siteTitle,
+				SiteURL:         siteURL,
 			}
 		}
 
@@ -82,18 +84,20 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 			parent, err := rt.CommentByID(ctx, comment.Parent)
 			if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) {
 				recipients[strings.ToLower(parent.Mail)] = notifyContext{
-					Type:          "guest",
-					ToEmail:       parent.Mail,
-					ToName:        parent.Author,
-					PostTitle:     content.Title,
-					PostURL:       commentURL,
-					Author:        comment.Author,
-					Content:       comment.Text,
-					Time:          formatTime(comment.Created),
-					ParentAuthor:  parent.Author,
-					ParentContent: parent.Text,
-					SiteTitle:     siteTitle,
-					SiteURL:       siteURL,
+					Type:            "guest",
+					ToEmail:         parent.Mail,
+					ToName:          parent.Author,
+					PostTitle:       content.Title,
+					PostURL:         commentURL,
+					Author:          comment.Author,
+					AuthorAvatarURL: commentAvatarURL,
+					Content:         comment.Text,
+					Time:            formatTime(comment.Created),
+					ParentAuthor:    parent.Author,
+					ParentAvatarURL: pluginAvatarURL(ctx, rt, parent.Mail, 72),
+					ParentContent:   parent.Text,
+					SiteTitle:       siteTitle,
+					SiteURL:         siteURL,
 				}
 			}
 		}
@@ -104,15 +108,16 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 			adminMail := strings.TrimSpace(cfg["admin_email"])
 			if adminMail != "" && !mailEqual(adminMail, comment.Mail) {
 				recipients[strings.ToLower(adminMail)] = notifyContext{
-					Type:      "pending",
-					ToEmail:   adminMail,
-					PostTitle: content.Title,
-					PostURL:   commentURL,
-					Author:    comment.Author,
-					Content:   comment.Text,
-					Time:      formatTime(comment.Created),
-					SiteTitle: siteTitle,
-					SiteURL:   siteURL,
+					Type:            "pending",
+					ToEmail:         adminMail,
+					PostTitle:       content.Title,
+					PostURL:         commentURL,
+					Author:          comment.Author,
+					AuthorAvatarURL: commentAvatarURL,
+					Content:         comment.Text,
+					Time:            formatTime(comment.Created),
+					SiteTitle:       siteTitle,
+					SiteURL:         siteURL,
 				}
 			}
 		}
@@ -172,6 +177,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	siteURL = strings.TrimRight(siteURL, "/")
 
 	commentURL, _ := rt.CommentURL(ctx, comment.COID)
+	commentAvatarURL := pluginAvatarURL(ctx, rt, comment.Mail, 72)
 
 	adminMail := strings.TrimSpace(cfg["admin_email"])
 	recipients := make(map[string]notifyContext)
@@ -181,34 +187,37 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		parent, err := rt.CommentByID(ctx, comment.Parent)
 		if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) && !mailEqual(parent.Mail, adminMail) {
 			recipients[strings.ToLower(parent.Mail)] = notifyContext{
-				Type:          "guest",
-				ToEmail:       parent.Mail,
-				ToName:        parent.Author,
-				PostTitle:     content.Title,
-				PostURL:       commentURL,
-				Author:        comment.Author,
-				Content:       comment.Text,
-				Time:          formatTime(comment.Created),
-				ParentAuthor:  parent.Author,
-				ParentContent: parent.Text,
-				SiteTitle:     siteTitle,
-				SiteURL:       siteURL,
+				Type:            "guest",
+				ToEmail:         parent.Mail,
+				ToName:          parent.Author,
+				PostTitle:       content.Title,
+				PostURL:         commentURL,
+				Author:          comment.Author,
+				AuthorAvatarURL: commentAvatarURL,
+				Content:         comment.Text,
+				Time:            formatTime(comment.Created),
+				ParentAuthor:    parent.Author,
+				ParentAvatarURL: pluginAvatarURL(ctx, rt, parent.Mail, 72),
+				ParentContent:   parent.Text,
+				SiteTitle:       siteTitle,
+				SiteURL:         siteURL,
 			}
 		}
 	} else if cfg["notify_owner"] == "1" {
 		// Notify content author.
 		if authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) && !mailEqual(authorUser.Mail, adminMail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
-				Type:      "owner",
-				ToEmail:   authorUser.Mail,
-				ToName:    authorUser.ScreenName,
-				PostTitle: content.Title,
-				PostURL:   commentURL,
-				Author:    comment.Author,
-				Content:   comment.Text,
-				Time:      formatTime(comment.Created),
-				SiteTitle: siteTitle,
-				SiteURL:   siteURL,
+				Type:            "owner",
+				ToEmail:         authorUser.Mail,
+				ToName:          authorUser.ScreenName,
+				PostTitle:       content.Title,
+				PostURL:         commentURL,
+				Author:          comment.Author,
+				AuthorAvatarURL: commentAvatarURL,
+				Content:         comment.Text,
+				Time:            formatTime(comment.Created),
+				SiteTitle:       siteTitle,
+				SiteURL:         siteURL,
 			}
 		}
 	}
@@ -225,6 +234,13 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 // mailEqual compares two email addresses case-insensitively.
 func mailEqual(a, b string) bool {
 	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+func pluginAvatarURL(ctx context.Context, rt *plugin.Runtime, mail string, size int) string {
+	if rt == nil || rt.AvatarURL == nil {
+		return ""
+	}
+	return rt.AvatarURL(ctx, mail, size)
 }
 
 // formatTime formats a Unix timestamp as a readable date-time string.

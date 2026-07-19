@@ -76,17 +76,19 @@ func (commentNotifier) RenderAdminPage(ctx context.Context, rt *plugin.Runtime, 
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 	previewValues, err := emailTemplateValues(notifyContext{
-		Type:          "guest",
-		ToName:        "访客",
-		PostTitle:     "一篇用于预览邮件样式的文章",
-		PostURL:       siteURL + "/post/1.html#comment-2",
-		Author:        "新评论者",
-		Content:       "这是回复内容。\n占位符会使用模拟数据即时渲染。",
-		Time:          time.Now().Format("2006-01-02 15:04:05"),
-		ParentAuthor:  "访客",
-		ParentContent: "这是原评论内容。",
-		SiteTitle:     siteTitle,
-		SiteURL:       siteURL,
+		Type:            "guest",
+		ToName:          "访客",
+		PostTitle:       "一篇用于预览邮件样式的文章",
+		PostURL:         siteURL + "/post/1.html#comment-2",
+		Author:          "新评论者",
+		AuthorAvatarURL: pluginAvatarURL(ctx, rt, "preview-author@example.com", 72),
+		Content:         "这是回复内容。\n占位符会使用模拟数据即时渲染。",
+		Time:            time.Now().Format("2006-01-02 15:04:05"),
+		ParentAuthor:    "访客",
+		ParentAvatarURL: pluginAvatarURL(ctx, rt, "preview-parent@example.com", 72),
+		ParentContent:   "这是原评论内容。",
+		SiteTitle:       siteTitle,
+		SiteURL:         siteURL,
 	})
 	if err != nil {
 		return "", err

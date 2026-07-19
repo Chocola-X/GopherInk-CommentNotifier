@@ -14,7 +14,7 @@ type commentNotifier struct{}
 func init() { plugin.Register(commentNotifier{}) }
 
 func (commentNotifier) Name() string    { return pluginName }
-func (commentNotifier) Version() string { return "0.2.0" }
+func (commentNotifier) Version() string { return "0.2.1" }
 func (commentNotifier) Description() string {
 	return "在评论发布或审核通过后发送邮件提醒。"
 }
@@ -22,7 +22,7 @@ func (commentNotifier) Description() string {
 func (commentNotifier) Info() plugin.PluginInfo {
 	return plugin.PluginInfo{
 		Name:             pluginName,
-		Version:          "0.2.0",
+		Version:          "0.2.1",
 		Description:      "在评论发布或审核通过后发送邮件提醒。",
 		RequireGopherInk: "0.5.0",
 	}

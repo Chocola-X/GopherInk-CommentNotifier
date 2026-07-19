@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+@media (max-width: 700px) {
+  .gopherink-mail-shell { margin: 18px auto !important; }
+  .gopherink-mail-head { padding: 20px 22px !important; }
+  .gopherink-mail-body { padding: 28px 22px !important; }
+}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f3f5f7;font-family:'Century Gothic','Trebuchet MS','Hiragino Sans GB','Microsoft YaHei',Arial,sans-serif;color:#555;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+<tbody><tr><td align="center" style="padding:12px;">
+<div class="gopherink-mail-shell" style="box-sizing:border-box;width:666px;max-width:100%;margin:40px auto;border:1px solid #e8eaed;border-radius:10px;overflow:hidden;background-color:#fff;background-image:repeating-linear-gradient(-45deg,#fff,#fff 18px,#fafafa 18px,#fafafa 36px);box-shadow:0 4px 18px rgba(30,45,55,.12);">
+  <div class="gopherink-mail-head" style="padding:23px 32px;color:#fff;background:#43c6b8;background-image:linear-gradient(100deg,#43c6b8 0%,#70c9d4 48%,#f3b8dc 100%);">
+    <h1 style="margin:0;font-size:18px;line-height:1.5;font-weight:600;">{headline}</h1>
+    <p style="margin:5px 0 0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.9);">来自 {site_title}</p>
+  </div>
+  <div class="gopherink-mail-body" style="padding:36px 40px 40px;font-size:14px;line-height:1.75;">
+    <p style="margin:0 0 18px;">{intro}</p>
+
+    {parent_comment_block}
+
+    <!-- 头像与用户名区域（使用 Table 布局确保邮件客户端兼容性） -->
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 8px;">
+      <tr>
+        <td valign="middle" width="36" style="padding-right: 12px;">
+          <img src="{comment_avatar_url}" width="36" height="36" style="border-radius: 50%; display: block; border: 1px solid #eaeaea;" alt="{comment_author} 的头像">
+        </td>
+        <td valign="middle" style="font-size: 14px; line-height: 1.5;">
+          <strong style="color: #333;">{comment_author}</strong> 的{comment_label}：
+        </td>
+      </tr>
+    </table>
+
+    <!-- 纯白回复卡片 -->
+    <div style="margin:0 0 18px;padding:16px 18px;border-radius:6px;color:#45484b;background-color:#ffffff;border:1px solid #f0f0f0;box-shadow:0 3px 10px rgba(30,45,55,.06);word-break:break-word;">
+      {comment_content}
+    </div>
+
+    <p style="margin:0 0 22px;color:#85898e;font-size:13px;">时间：{comment_time}</p>
+    <p style="margin:0 0 26px;"><a href="{action_url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 22px;border-radius:6px;color:#fff;text-decoration:none;background:#20a9c8;">{action_label}</a></p>
+    <p style="margin:0;color:#92969b;font-size:12px;line-height:1.7;">此邮件由 <a href="{site_url}" target="_blank" rel="noopener noreferrer" style="color:#20a9c8;text-decoration:none;">{site_title}</a> 自动发送，请勿直接回复。若此邮件与您无关，可以忽略并删除。</p>
+  </div>
+</div>
+</td></tr>
+</tbody></table>
+
+</body>
+</html>

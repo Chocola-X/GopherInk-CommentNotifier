@@ -33,16 +33,17 @@ func (commentNotifier) HandleAdminAction(ctx context.Context, rt *plugin.Runtime
 	siteURL = strings.TrimRight(siteURL, "/")
 	subject := "[GopherInk] 邮件发送测试"
 	body, err := buildHTMLBody(notifyContext{
-		Type:      "test",
-		ToEmail:   to,
-		ToName:    "管理员",
-		PostTitle: "邮件外观预览",
-		PostURL:   siteURL,
-		Author:    "GopherInk",
-		Content:   "如果你收到了这封邮件，说明 SMTP 配置和当前邮件模板可以正常工作。",
-		Time:      time.Now().Format("2006-01-02 15:04:05"),
-		SiteTitle: siteTitle,
-		SiteURL:   siteURL,
+		Type:            "test",
+		ToEmail:         to,
+		ToName:          "管理员",
+		PostTitle:       "邮件外观预览",
+		PostURL:         siteURL,
+		Author:          "GopherInk",
+		AuthorAvatarURL: pluginAvatarURL(ctx, rt, to, 72),
+		Content:         "如果你收到了这封邮件，说明 SMTP 配置和当前邮件模板可以正常工作。",
+		Time:            time.Now().Format("2006-01-02 15:04:05"),
+		SiteTitle:       siteTitle,
+		SiteURL:         siteURL,
 	}, cfg["email_template"])
 	if err != nil {
 		return plugin.AdminNotice{}, fmt.Errorf("无法渲染测试邮件：%w", err)
