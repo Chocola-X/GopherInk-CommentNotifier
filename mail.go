@@ -17,7 +17,7 @@ import (
 type smtpConfig struct {
 	Host       string
 	Port       int
-	Security   string // "starttls", "tls", "none"
+	Security   string // "ssl", "tls", "none"
 	Username   string
 	Password   string
 	FromEmail  string
@@ -44,7 +44,7 @@ type notifyContext struct {
 func parseSMTPConfig(cfg map[string]string) (smtpConfig, error) {
 	port, _ := strconv.Atoi(cfg["smtp_port"])
 	if port <= 0 {
-		port = 587
+		port = 465
 	}
 	sc := smtpConfig{
 		Host:       strings.TrimSpace(cfg["smtp_host"]),
@@ -59,7 +59,7 @@ func parseSMTPConfig(cfg map[string]string) (smtpConfig, error) {
 		return smtpConfig{}, fmt.Errorf("comment-notifier: SMTP configuration incomplete")
 	}
 	if sc.Security == "" {
-		sc.Security = "starttls"
+		sc.Security = "ssl"
 	}
 	if sc.FromName == "" {
 		sc.FromName = "GopherInk"
@@ -164,9 +164,9 @@ func sendMail(sc smtpConfig, to, subject, htmlBody string) error {
 
 	// Connect and send based on security mode.
 	switch sc.Security {
-	case "tls":
+	case "ssl":
 		return sendMailTLS(addr, sc.Username, sc.Password, from, to, []byte(msg.String()))
-	case "starttls":
+	case "tls":
 		return sendMailSTARTTLS(addr, sc.Host, sc.Username, sc.Password, from, to, []byte(msg.String()))
 	default:
 		return sendMailPlain(addr, sc.Host, sc.Username, sc.Password, from, to, []byte(msg.String()))

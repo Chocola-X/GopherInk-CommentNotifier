@@ -1,6 +1,12 @@
 package commentnotifier
 
-import "github.com/Chocola-X/GopherInk/core/plugin"
+import (
+	"context"
+	"net/http"
+	"strings"
+
+	"github.com/Chocola-X/GopherInk/core/plugin"
+)
 
 const pluginName = "comment-notifier"
 
@@ -26,6 +32,7 @@ func (commentNotifier) Info() plugin.PluginInfo {
 func (commentNotifier) Init(m *plugin.Manager) {
 	m.RegisterRuntimeHook(plugin.HookCommentAfterSave, afterCommentSave)
 	m.RegisterRuntimeHook(plugin.HookCommentAfterMark, afterCommentMark)
+	m.RegisterRoute(http.MethodGet, "/plugins/comment-notifier/test", handleTestEmail)
 	m.RegisterAdminMenu(plugin.AdminMenuItem{
 		Label: "评论邮件提醒",
 		URL:   "/admin/plugins/" + pluginName + "/config",
@@ -42,17 +49,32 @@ func (commentNotifier) ConfigSchema() []plugin.FieldSchema {
 		{Name: "admin_email", Label: "管理员收件邮箱", Group: "基本设置", Type: plugin.FieldText, Required: true, Wide: true,
 			Description: "用于接收待审核评论通知的邮箱地址。"},
 		{Name: "smtp_host", Label: "SMTP 服务器", Group: "SMTP", Type: plugin.FieldText, Required: true, Wide: true, Default: "smtp.qq.com"},
-		{Name: "smtp_port", Label: "SMTP 端口", Group: "SMTP", Type: plugin.FieldNumber, Default: "587", Required: true, Min: "1", Max: "65535", Step: "1"},
-		{Name: "smtp_security", Label: "连接加密", Group: "SMTP", Type: plugin.FieldSelect, Default: "starttls",
+		{Name: "smtp_port", Label: "SMTP 端口", Group: "SMTP", Type: plugin.FieldNumber, Default: "465", Required: true, Min: "1", Max: "65535", Step: "1"},
+		{Name: "smtp_security", Label: "SMTP加密模式", Group: "SMTP", Type: plugin.FieldSelect, Default: "ssl",
 			Options: []plugin.FieldOption{
-				{Label: "STARTTLS", Value: "starttls"},
-				{Label: "TLS 直连", Value: "tls"},
-				{Label: "不加密", Value: "none"},
+				{Label: "无安全加密", Value: "none"},
+				{Label: "SSL加密", Value: "ssl"},
+				{Label: "TLS加密", Value: "tls"},
 			},
 		},
 		{Name: "smtp_username", Label: "SMTP 用户名", Group: "SMTP", Type: plugin.FieldText, Required: true, Wide: true},
-		{Name: "smtp_password", Label: "SMTP 密码或授权码", Group: "SMTP", Type: plugin.FieldPassword, Required: true, Wide: true},
+		{Name: "smtp_password", Label: "SMTP 密码或授权码", Group: "SMTP", Type: plugin.FieldPassword, Required: true, Wide: true,
+			Description: `设置好所有 SMTP 参数并保存后，<a href="/plugins/comment-notifier/test" target="_blank">点击测试邮件发信是否正常</a>`},
 		{Name: "from_mail", Label: "发件邮箱", Group: "发件人", Type: plugin.FieldText, Required: true, Wide: true},
 		{Name: "from_name", Label: "发件人名称", Group: "发件人", Type: plugin.FieldText, Default: "GopherInk", Wide: true},
 	}
+}
+
+func (commentNotifier) AdminNotices(_ context.Context, _ *plugin.Runtime, values map[string]string) []plugin.AdminNotice {
+	required := []string{"admin_email", "smtp_host", "smtp_username", "smtp_password", "from_mail"}
+	for _, name := range required {
+		if strings.TrimSpace(values[name]) == "" {
+			return []plugin.AdminNotice{{
+				Type:    plugin.NoticeWarning,
+				Mode:    plugin.NoticeCard,
+				Message: "SMTP 配置尚未填写完整，评论邮件提醒当前不会发送邮件。",
+			}}
+		}
+	}
+	return nil
 }
