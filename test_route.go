@@ -3,8 +3,8 @@ package commentnotifier
 import (
 	"context"
 	"fmt"
-	"html"
 	"strings"
+	"time"
 
 	"github.com/Chocola-X/GopherInk/core/plugin"
 )
@@ -32,15 +32,21 @@ func (commentNotifier) HandleAdminAction(ctx context.Context, rt *plugin.Runtime
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 	subject := "[GopherInk] 邮件发送测试"
-	body := `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:-apple-system,PingFang SC,Microsoft YaHei,sans-serif;">
-<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-<h2 style="font-size:20px;margin:0 0 20px;color:#333;">邮件发送测试</h2>
-<p style="color:#666;margin:0 0 8px;">这是一封来自 <strong>` + html.EscapeString(siteTitle) + `</strong> 的测试邮件。</p>
-<p style="color:#666;margin:0 0 8px;">如果你收到了这封邮件，说明 SMTP 配置正确。</p>
-<p style="color:#999;margin:24px 0 0;font-size:13px;">此邮件由 <a href="` + html.EscapeString(siteURL) + `" style="color:#999;">` + html.EscapeString(siteTitle) + `</a> 自动发送</p>
-</div></body></html>`
+	body, err := buildHTMLBody(notifyContext{
+		Type:      "test",
+		ToEmail:   to,
+		ToName:    "管理员",
+		PostTitle: "邮件外观预览",
+		PostURL:   siteURL,
+		Author:    "GopherInk",
+		Content:   "如果你收到了这封邮件，说明 SMTP 配置和当前邮件模板可以正常工作。",
+		Time:      time.Now().Format("2006-01-02 15:04:05"),
+		SiteTitle: siteTitle,
+		SiteURL:   siteURL,
+	}, cfg["email_template"])
+	if err != nil {
+		return plugin.AdminNotice{}, fmt.Errorf("无法渲染测试邮件：%w", err)
+	}
 	if err := sendMail(sc, to, subject, body); err != nil {
 		return plugin.AdminNotice{}, fmt.Errorf("测试邮件发送失败：%w", err)
 	}

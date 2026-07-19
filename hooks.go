@@ -119,7 +119,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	}
 
 	for _, nc := range recipients {
-		if err := queueNotification(sc, nc); err != nil {
+		if err := queueNotification(sc, nc, cfg["email_template"]); err != nil {
 			log.Printf("[comment-notifier] queue mail to %s: %v", nc.ToEmail, err)
 		}
 	}
@@ -214,7 +214,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	}
 
 	for _, nc := range recipients {
-		if err := queueNotification(sc, nc); err != nil {
+		if err := queueNotification(sc, nc, cfg["email_template"]); err != nil {
 			log.Printf("[comment-notifier] queue mail to %s: %v", nc.ToEmail, err)
 		}
 	}

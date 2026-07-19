@@ -4,11 +4,12 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	"html/template"
+	"html"
 	"log"
 	"net"
 	netmail "net/mail"
 	"net/smtp"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ type smtpConfig struct {
 
 // notifyContext holds data for rendering a notification email.
 type notifyContext struct {
-	Type          string // "owner", "guest", "pending"
+	Type          string // "owner", "guest", "pending", "test"
 	ToEmail       string
 	ToName        string
 	PostTitle     string
@@ -128,74 +129,149 @@ func buildSubject(nc notifyContext) string {
 	}
 }
 
-// HTML email templates for each notification type.
-var emailTemplates = map[string]*template.Template{}
+type emailTemplatePlaceholder struct {
+	Token       string
+	Description string
+}
 
-func init() {
-	parse := func(name, text string) {
-		t := template.Must(template.New(name).Parse(text))
-		emailTemplates[name] = t
-	}
+var emailTemplatePlaceholders = []emailTemplatePlaceholder{
+	{Token: "{notification_type}", Description: "通知类型：owner、guest、pending 或 test"},
+	{Token: "{headline}", Description: "通知标题"},
+	{Token: "{intro}", Description: "根据通知类型生成的摘要"},
+	{Token: "{site_title}", Description: "站点名称"},
+	{Token: "{site_url}", Description: "站点地址"},
+	{Token: "{post_title}", Description: "文章或页面标题"},
+	{Token: "{post_url}", Description: "评论所在位置的链接"},
+	{Token: "{recipient_name}", Description: "收件人名称"},
+	{Token: "{comment_author}", Description: "评论者名称"},
+	{Token: "{comment_label}", Description: "评论、回复或测试内容标签"},
+	{Token: "{comment_content}", Description: "评论正文"},
+	{Token: "{comment_time}", Description: "评论时间"},
+	{Token: "{parent_author}", Description: "被回复者名称"},
+	{Token: "{parent_content}", Description: "被回复的评论正文"},
+	{Token: "{parent_comment_block}", Description: "回复通知中的原评论区块，其他通知为空"},
+	{Token: "{action_url}", Description: "查看评论或前往审核的地址"},
+	{Token: "{action_label}", Description: "操作按钮文本"},
+}
 
-	parse("owner", `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:-apple-system,PingFang SC,Microsoft YaHei,sans-serif;">
-<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-<h2 style="font-size:20px;margin:0 0 20px;color:#333;">你的文章收到了新评论</h2>
-<p style="color:#666;margin:0 0 8px;">文章：<a href="{{.PostURL}}" style="color:#12ADDB;text-decoration:none;">{{.PostTitle}}</a></p>
-<p style="color:#666;margin:0 0 8px;">评论者：<strong>{{.Author}}</strong></p>
-<p style="color:#666;margin:0 0 8px;">时间：{{.Time}}</p>
-<div style="background:#f5f5f5;border-radius:8px;padding:16px;margin:16px 0;color:#333;line-height:1.6;">{{.Content}}</div>
-<p style="margin:16px 0 0;"><a href="{{.PostURL}}" style="display:inline-block;padding:10px 24px;background:#12ADDB;color:#fff;border-radius:6px;text-decoration:none;">查看评论</a></p>
-<p style="color:#999;margin:24px 0 0;font-size:13px;">此邮件由 <a href="{{.SiteURL}}" style="color:#999;">{{.SiteTitle}}</a> 自动发送</p>
-</div></body></html>`)
-
-	parse("guest", `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:-apple-system,PingFang SC,Microsoft YaHei,sans-serif;">
-<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-<h2 style="font-size:20px;margin:0 0 20px;color:#333;">你的评论收到了新回复</h2>
-<p style="color:#666;margin:0 0 8px;">文章：<a href="{{.PostURL}}" style="color:#12ADDB;text-decoration:none;">{{.PostTitle}}</a></p>
-<div style="background:#f0f0f0;border-radius:8px;padding:12px 16px;margin:12px 0;color:#888;line-height:1.6;">
-<p style="margin:0 0 4px;font-size:13px;color:#999;">{{.ParentAuthor}} 的评论：</p>
-{{.ParentContent}}
+const defaultEmailTemplate = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+@media (max-width: 700px) {
+  .gopherink-mail-shell { margin: 18px auto !important; }
+  .gopherink-mail-head { padding: 20px 22px !important; }
+  .gopherink-mail-body { padding: 28px 22px !important; }
+}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f3f5f7;font-family:'Century Gothic','Trebuchet MS','Hiragino Sans GB','Microsoft YaHei',Arial,sans-serif;color:#555;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+<tr><td align="center" style="padding:12px;">
+<div class="gopherink-mail-shell" style="box-sizing:border-box;width:666px;max-width:100%;margin:40px auto;border:1px solid #e8eaed;border-radius:10px;overflow:hidden;background-color:#fff;background-image:repeating-linear-gradient(-45deg,#fff,#fff 18px,#fafafa 18px,#fafafa 36px);box-shadow:0 4px 18px rgba(30,45,55,.12);">
+  <div class="gopherink-mail-head" style="padding:23px 32px;color:#fff;background:#43c6b8;background-image:linear-gradient(100deg,#43c6b8 0%,#70c9d4 48%,#f3b8dc 100%);">
+    <h1 style="margin:0;font-size:18px;line-height:1.5;font-weight:600;">{headline}</h1>
+    <p style="margin:5px 0 0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.9);">来自 {site_title}</p>
+  </div>
+  <div class="gopherink-mail-body" style="padding:36px 40px 40px;font-size:14px;line-height:1.75;">
+    <p style="margin:0 0 18px;">{intro}</p>
+    {parent_comment_block}
+    <p style="margin:0 0 8px;"><strong>{comment_author}</strong> 的{comment_label}：</p>
+    <div style="margin:0 0 18px;padding:16px 18px;border-radius:6px;color:#45484b;background-color:#fafafa;background-image:repeating-linear-gradient(-45deg,#fff,#fff 18px,#f7f8f9 18px,#f7f8f9 36px);box-shadow:0 2px 7px rgba(30,45,55,.12);word-break:break-word;">{comment_content}</div>
+    <p style="margin:0 0 22px;color:#85898e;font-size:13px;">时间：{comment_time}</p>
+    <p style="margin:0 0 26px;"><a href="{action_url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 22px;border-radius:6px;color:#fff;text-decoration:none;background:#20a9c8;">{action_label}</a></p>
+    <p style="margin:0;color:#92969b;font-size:12px;line-height:1.7;">此邮件由 <a href="{site_url}" target="_blank" rel="noopener noreferrer" style="color:#20a9c8;text-decoration:none;">{site_title}</a> 自动发送，请勿直接回复。若此邮件与您无关，可以忽略并删除。</p>
+  </div>
 </div>
-<p style="color:#666;margin:0 0 8px;"><strong>{{.Author}}</strong> 回复：</p>
-<div style="background:#f5f5f5;border-radius:8px;padding:16px;margin:12px 0;color:#333;line-height:1.6;">{{.Content}}</div>
-<p style="color:#666;margin:0 0 8px;">时间：{{.Time}}</p>
-<p style="margin:16px 0 0;"><a href="{{.PostURL}}" style="display:inline-block;padding:10px 24px;background:#12ADDB;color:#fff;border-radius:6px;text-decoration:none;">查看回复</a></p>
-<p style="color:#999;margin:24px 0 0;font-size:13px;">此邮件由 <a href="{{.SiteURL}}" style="color:#999;">{{.SiteTitle}}</a> 自动发送</p>
-</div></body></html>`)
+</td></tr>
+</table>
+</body>
+</html>`
 
-	parse("pending", `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:-apple-system,PingFang SC,Microsoft YaHei,sans-serif;">
-<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-<h2 style="font-size:20px;margin:0 0 20px;color:#333;">有待审核的评论</h2>
-<p style="color:#666;margin:0 0 8px;">文章：<a href="{{.PostURL}}" style="color:#12ADDB;text-decoration:none;">{{.PostTitle}}</a></p>
-<p style="color:#666;margin:0 0 8px;">评论者：<strong>{{.Author}}</strong></p>
-<p style="color:#666;margin:0 0 8px;">时间：{{.Time}}</p>
-<div style="background:#f5f5f5;border-radius:8px;padding:16px;margin:16px 0;color:#333;line-height:1.6;">{{.Content}}</div>
-<p style="margin:16px 0 0;"><a href="{{.SiteURL}}/admin/comments" style="display:inline-block;padding:10px 24px;background:#e67e22;color:#fff;border-radius:6px;text-decoration:none;">前往审核</a></p>
-<p style="color:#999;margin:24px 0 0;font-size:13px;">此邮件由 <a href="{{.SiteURL}}" style="color:#999;">{{.SiteTitle}}</a> 自动发送</p>
-</div></body></html>`)
+var emailPlaceholderPattern = regexp.MustCompile(`\{[a-z][a-z0-9_]*\}`)
+
+func configuredEmailTemplate(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return defaultEmailTemplate
+	}
+	return value
 }
 
-// buildHTMLBody renders the email HTML body for the given notification context.
-func buildHTMLBody(nc notifyContext) (string, error) {
-	tmpl, ok := emailTemplates[nc.Type]
-	if !ok {
-		return "", fmt.Errorf("comment-notifier: unknown notification type %q", nc.Type)
+func emailTemplateValues(nc notifyContext) (map[string]string, error) {
+	escape := html.EscapeString
+	escapeLines := func(value string) string {
+		return strings.ReplaceAll(escape(value), "\n", "<br>")
 	}
-	var buf strings.Builder
-	if err := tmpl.Execute(&buf, nc); err != nil {
-		return "", fmt.Errorf("comment-notifier: render template: %w", err)
+	headline := ""
+	intro := ""
+	actionLabel := "查看评论"
+	actionURL := nc.PostURL
+	commentLabel := "评论"
+	switch nc.Type {
+	case "owner":
+		headline = "你的文章收到了新评论"
+		intro = fmt.Sprintf("%s 在《%s》发表了新评论。", escape(nc.Author), escape(nc.PostTitle))
+	case "guest":
+		headline = "你的评论收到了新回复"
+		intro = fmt.Sprintf("%s 回复了你在《%s》下的评论。", escape(nc.Author), escape(nc.PostTitle))
+		actionLabel = "查看回复"
+		commentLabel = "回复"
+	case "pending":
+		headline = "有待审核的评论"
+		intro = fmt.Sprintf("《%s》收到一条等待审核的评论。", escape(nc.PostTitle))
+		actionLabel = "前往审核"
+		actionURL = strings.TrimRight(nc.SiteURL, "/") + "/admin/comments"
+	case "test":
+		headline = "邮件发送测试"
+		intro = "这是一封用于验证 SMTP 配置和邮件外观的测试邮件。"
+		actionLabel = "访问站点"
+		actionURL = nc.SiteURL
+		commentLabel = "测试内容"
+	default:
+		return nil, fmt.Errorf("comment-notifier: unknown notification type %q", nc.Type)
 	}
-	return buf.String(), nil
+	parentBlock := ""
+	if nc.Type == "guest" {
+		parentBlock = `<p style="margin:0 0 8px;color:#777;">你此前的评论：</p><div style="margin:0 0 18px;padding:14px 16px;border-left:3px solid #70c9d4;border-radius:4px;color:#777;background:#f5f7f8;word-break:break-word;">` + escapeLines(nc.ParentContent) + `</div>`
+	}
+	return map[string]string{
+		"{notification_type}":    escape(nc.Type),
+		"{headline}":             headline,
+		"{intro}":                intro,
+		"{site_title}":           escape(nc.SiteTitle),
+		"{site_url}":             escape(nc.SiteURL),
+		"{post_title}":           escape(nc.PostTitle),
+		"{post_url}":             escape(nc.PostURL),
+		"{recipient_name}":       escape(nc.ToName),
+		"{comment_author}":       escape(nc.Author),
+		"{comment_label}":        commentLabel,
+		"{comment_content}":      escapeLines(nc.Content),
+		"{comment_time}":         escape(nc.Time),
+		"{parent_author}":        escape(nc.ParentAuthor),
+		"{parent_content}":       escapeLines(nc.ParentContent),
+		"{parent_comment_block}": parentBlock,
+		"{action_url}":           escape(actionURL),
+		"{action_label}":         actionLabel,
+	}, nil
 }
 
-func queueNotification(sc smtpConfig, nc notifyContext) error {
-	body, err := buildHTMLBody(nc)
+func buildHTMLBody(nc notifyContext, source string) (string, error) {
+	values, err := emailTemplateValues(nc)
+	if err != nil {
+		return "", err
+	}
+	return emailPlaceholderPattern.ReplaceAllStringFunc(configuredEmailTemplate(source), func(token string) string {
+		if value, ok := values[token]; ok {
+			return value
+		}
+		return token
+	}), nil
+}
+
+func queueNotification(sc smtpConfig, nc notifyContext, templateSource string) error {
+	body, err := buildHTMLBody(nc, templateSource)
 	if err != nil {
 		return err
 	}
