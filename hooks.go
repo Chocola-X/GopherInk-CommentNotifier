@@ -2,7 +2,6 @@ package commentnotifier
 
 import (
 	"context"
-	"html"
 	"log"
 	"strings"
 	"time"
@@ -48,7 +47,10 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 
 	authorUser, _ := rt.UserByID(ctx, content.AuthorID)
 
-	siteTitle, _ := rt.Option(ctx, "title")
+	siteTitle, _ := rt.Option(ctx, "site_title")
+	if siteTitle == "" {
+		siteTitle = "GopherInk"
+	}
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 
@@ -60,7 +62,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	switch comment.Status {
 	case "approved":
 		// Notify content author if the commenter is not the author.
-		if cfg["notify_owner"] == "1" && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
+		if cfg["notify_owner"] == "1" && comment.AuthorID != content.AuthorID && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
 				Type:      "owner",
 				ToEmail:   authorUser.Mail,
@@ -78,7 +80,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		// Notify parent commenter if this is a reply.
 		if comment.Parent > 0 && cfg["notify_parent"] == "1" {
 			parent, err := rt.CommentByID(ctx, comment.Parent)
-			if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) && !mailEqual(parent.Mail, authorUser.Mail) {
+			if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) {
 				recipients[strings.ToLower(parent.Mail)] = notifyContext{
 					Type:          "guest",
 					ToEmail:       parent.Mail,
@@ -116,25 +118,10 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		}
 	}
 
-	// Send emails to all recipients.
 	for _, nc := range recipients {
-		nc := nc
-		go func() {
-			subject := buildSubject(nc)
-			// Escape user input in HTML context.
-			nc.Author = html.EscapeString(nc.Author)
-			nc.Content = html.EscapeString(nc.Content)
-			nc.ParentAuthor = html.EscapeString(nc.ParentAuthor)
-			nc.ParentContent = html.EscapeString(nc.ParentContent)
-			nc.PostTitle = html.EscapeString(nc.PostTitle)
-			nc.SiteTitle = html.EscapeString(nc.SiteTitle)
-			body, err := buildHTMLBody(nc)
-			if err != nil {
-				log.Printf("[comment-notifier] build body: %v", err)
-				return
-			}
-			safeSendMail(sc, nc.ToEmail, subject, body)
-		}()
+		if err := queueNotification(sc, nc); err != nil {
+			log.Printf("[comment-notifier] queue mail to %s: %v", nc.ToEmail, err)
+		}
 	}
 
 	return value, nil
@@ -177,7 +164,10 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 
 	authorUser, _ := rt.UserByID(ctx, content.AuthorID)
 
-	siteTitle, _ := rt.Option(ctx, "title")
+	siteTitle, _ := rt.Option(ctx, "site_title")
+	if siteTitle == "" {
+		siteTitle = "GopherInk"
+	}
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 
@@ -224,22 +214,9 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	}
 
 	for _, nc := range recipients {
-		nc := nc
-		go func() {
-			subject := buildSubject(nc)
-			nc.Author = html.EscapeString(nc.Author)
-			nc.Content = html.EscapeString(nc.Content)
-			nc.ParentAuthor = html.EscapeString(nc.ParentAuthor)
-			nc.ParentContent = html.EscapeString(nc.ParentContent)
-			nc.PostTitle = html.EscapeString(nc.PostTitle)
-			nc.SiteTitle = html.EscapeString(nc.SiteTitle)
-			body, err := buildHTMLBody(nc)
-			if err != nil {
-				log.Printf("[comment-notifier] build body: %v", err)
-				return
-			}
-			safeSendMail(sc, nc.ToEmail, subject, body)
-		}()
+		if err := queueNotification(sc, nc); err != nil {
+			log.Printf("[comment-notifier] queue mail to %s: %v", nc.ToEmail, err)
+		}
 	}
 
 	return value, nil
