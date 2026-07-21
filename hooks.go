@@ -2,12 +2,15 @@ package commentnotifier
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/plugin"
 )
+
+var errNotifierRecordNotFound = errors.New("record not found")
 
 // afterCommentSave handles the comment.after_save hook.
 // It covers both new comments and backend replies (operation "comment" or "reply").
@@ -32,20 +35,20 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		return value, nil
 	}
 
-	comment, err := rt.CommentByID(ctx, payload.ID)
+	comment, err := notifierCommentByID(ctx, rt, payload.ID)
 	if err != nil {
 		log.Printf("[comment-notifier] query comment %d: %v", payload.ID, err)
 		return value, nil
 	}
 
 	// Get content info via Runtime API.
-	content, err := rt.ContentByID(ctx, comment.CID)
+	content, err := notifierContentByID(ctx, rt, comment.CID)
 	if err != nil {
 		log.Printf("[comment-notifier] query content %d: %v", comment.CID, err)
 		return value, nil
 	}
 
-	authorUser, _ := rt.UserByID(ctx, content.AuthorID)
+	authorUser, _ := notifierUserByID(ctx, rt, content.AuthorID)
 
 	siteTitle, _ := rt.Option(ctx, "site_title")
 	if siteTitle == "" {
@@ -81,7 +84,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 
 		// Notify parent commenter if this is a reply.
 		if comment.Parent > 0 && cfg["notify_parent"] == "1" {
-			parent, err := rt.CommentByID(ctx, comment.Parent)
+			parent, err := notifierCommentByID(ctx, rt, comment.Parent)
 			if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) {
 				recipients[strings.ToLower(parent.Mail)] = notifyContext{
 					Type:            "guest",
@@ -155,19 +158,19 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		return value, nil
 	}
 
-	comment, err := rt.CommentByID(ctx, payload.ID)
+	comment, err := notifierCommentByID(ctx, rt, payload.ID)
 	if err != nil {
 		log.Printf("[comment-notifier] query comment %d: %v", payload.ID, err)
 		return value, nil
 	}
 
-	content, err := rt.ContentByID(ctx, comment.CID)
+	content, err := notifierContentByID(ctx, rt, comment.CID)
 	if err != nil {
 		log.Printf("[comment-notifier] query content %d: %v", comment.CID, err)
 		return value, nil
 	}
 
-	authorUser, _ := rt.UserByID(ctx, content.AuthorID)
+	authorUser, _ := notifierUserByID(ctx, rt, content.AuthorID)
 
 	siteTitle, _ := rt.Option(ctx, "site_title")
 	if siteTitle == "" {
@@ -184,7 +187,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 
 	if comment.Parent > 0 && cfg["notify_parent"] == "1" {
 		// Notify parent commenter.
-		parent, err := rt.CommentByID(ctx, comment.Parent)
+		parent, err := notifierCommentByID(ctx, rt, comment.Parent)
 		if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) && !mailEqual(parent.Mail, adminMail) {
 			recipients[strings.ToLower(parent.Mail)] = notifyContext{
 				Type:            "guest",
@@ -241,6 +244,39 @@ func pluginAvatarURL(ctx context.Context, rt *plugin.Runtime, mail string, size 
 		return ""
 	}
 	return rt.AvatarURL(ctx, mail, size)
+}
+
+func notifierCommentByID(ctx context.Context, rt *plugin.Runtime, id int64) (plugin.PublicComment, error) {
+	comments, _, err := rt.ListComments(ctx, plugin.PublicCommentQuery{COID: id, Status: "all", Limit: 1})
+	if err != nil {
+		return plugin.PublicComment{}, err
+	}
+	if len(comments) == 0 {
+		return plugin.PublicComment{}, errNotifierRecordNotFound
+	}
+	return comments[0], nil
+}
+
+func notifierContentByID(ctx context.Context, rt *plugin.Runtime, id int64) (plugin.PublicContent, error) {
+	contents, _, err := rt.ListContents(ctx, plugin.PublicContentQuery{CID: id, Type: "all", Status: "all", IncludeDrafts: true, Limit: 1})
+	if err != nil {
+		return plugin.PublicContent{}, err
+	}
+	if len(contents) == 0 {
+		return plugin.PublicContent{}, errNotifierRecordNotFound
+	}
+	return contents[0], nil
+}
+
+func notifierUserByID(ctx context.Context, rt *plugin.Runtime, id int64) (plugin.PublicUser, error) {
+	users, _, err := rt.ListUsers(ctx, plugin.PublicUserQuery{UID: id, Limit: 1})
+	if err != nil {
+		return plugin.PublicUser{}, err
+	}
+	if len(users) == 0 {
+		return plugin.PublicUser{}, errNotifierRecordNotFound
+	}
+	return users[0], nil
 }
 
 // formatTime formats a Unix timestamp as a readable date-time string.
