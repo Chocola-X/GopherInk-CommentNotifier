@@ -16,20 +16,19 @@ import (
 	"time"
 )
 
-// smtpConfig holds SMTP connection parameters parsed from plugin config.
 type smtpConfig struct {
 	Host      string
 	Port      int
-	Security  string // "ssl", "tls", "none"
+	Security  string
 	Username  string
 	Password  string
 	FromEmail string
 	FromName  string
 }
 
-// notifyContext holds data for rendering a notification email.
 type notifyContext struct {
-	Type            string // "owner", "guest", "pending", "test"
+	Type            string
+	Lang            string
 	ToEmail         string
 	ToName          string
 	PostTitle       string
@@ -70,7 +69,6 @@ func init() {
 	}
 }
 
-// parseSMTPConfig builds an smtpConfig from the plugin config map.
 func parseSMTPConfig(cfg map[string]string) (smtpConfig, error) {
 	port := 465
 	if value := strings.TrimSpace(cfg["smtp_port"]); value != "" {
@@ -118,17 +116,16 @@ func parseSMTPConfig(cfg map[string]string) (smtpConfig, error) {
 	return sc, nil
 }
 
-// buildSubject returns the email subject for the given notification type.
 func buildSubject(nc notifyContext) string {
 	switch nc.Type {
 	case "owner":
-		return fmt.Sprintf("你的《%s》文章有了新的评论", nc.PostTitle)
+		return fmt.Sprintf(T(nc.Lang, "Your post \"%s\" has a new comment"), nc.PostTitle)
 	case "guest":
-		return fmt.Sprintf("你在[%s]的评论有了新的回复", nc.PostTitle)
+		return fmt.Sprintf(T(nc.Lang, "Your comment on [%s] has a new reply"), nc.PostTitle)
 	case "pending":
-		return fmt.Sprintf("文章《%s》有条待审评论", nc.PostTitle)
+		return fmt.Sprintf(T(nc.Lang, "Post \"%s\" has a pending comment"), nc.PostTitle)
 	default:
-		return "GopherInk 评论通知"
+		return T(nc.Lang, "GopherInk Comment Notification")
 	}
 }
 
@@ -138,25 +135,25 @@ type emailTemplatePlaceholder struct {
 }
 
 var emailTemplatePlaceholders = []emailTemplatePlaceholder{
-	{Token: "{notification_type}", Description: "通知类型：owner、guest、pending 或 test"},
-	{Token: "{headline}", Description: "通知标题"},
-	{Token: "{intro}", Description: "根据通知类型生成的摘要"},
-	{Token: "{site_title}", Description: "站点名称"},
-	{Token: "{site_url}", Description: "站点地址"},
-	{Token: "{post_title}", Description: "文章或页面标题"},
-	{Token: "{post_url}", Description: "评论所在位置的链接"},
-	{Token: "{recipient_name}", Description: "收件人名称"},
-	{Token: "{comment_author}", Description: "评论者名称"},
-	{Token: "{comment_avatar_url}", Description: "评论者邮箱对应的头像地址"},
-	{Token: "{comment_label}", Description: "评论、回复或测试内容标签"},
-	{Token: "{comment_content}", Description: "评论正文"},
-	{Token: "{comment_time}", Description: "评论时间"},
-	{Token: "{parent_author}", Description: "被回复者名称"},
-	{Token: "{parent_avatar_url}", Description: "被回复者邮箱对应的头像地址"},
-	{Token: "{parent_content}", Description: "被回复的评论正文"},
-	{Token: "{parent_comment_block}", Description: "回复通知中的原评论区块，其他通知为空"},
-	{Token: "{action_url}", Description: "查看评论或前往审核的地址"},
-	{Token: "{action_label}", Description: "操作按钮文本"},
+	{Token: "{notification_type}", Description: "Notification type: owner, guest, pending, or test"},
+	{Token: "{headline}", Description: "Notification headline"},
+	{Token: "{intro}", Description: "Summary generated based on notification type"},
+	{Token: "{site_title}", Description: "Site name"},
+	{Token: "{site_url}", Description: "Site URL"},
+	{Token: "{post_title}", Description: "Post or page title"},
+	{Token: "{post_url}", Description: "Link to the comment location"},
+	{Token: "{recipient_name}", Description: "Recipient name"},
+	{Token: "{comment_author}", Description: "Commenter name"},
+	{Token: "{comment_avatar_url}", Description: "Avatar URL for commenter email"},
+	{Token: "{comment_label}", Description: "Comment, reply, or test content label"},
+	{Token: "{comment_content}", Description: "Comment body"},
+	{Token: "{comment_time}", Description: "Comment time"},
+	{Token: "{parent_author}", Description: "Parent commenter name"},
+	{Token: "{parent_avatar_url}", Description: "Avatar URL for parent commenter email"},
+	{Token: "{parent_content}", Description: "Parent comment body"},
+	{Token: "{parent_comment_block}", Description: "Original comment block in reply notifications; empty for other types"},
+	{Token: "{action_url}", Description: "URL to view the comment or go to review"},
+	{Token: "{action_label}", Description: "Action button text"},
 }
 
 //go:embed email_style.html
@@ -178,35 +175,35 @@ func emailTemplateValues(nc notifyContext) (map[string]string, error) {
 	}
 	headline := ""
 	intro := ""
-	actionLabel := "查看评论"
+	actionLabel := T(nc.Lang, "View comment")
 	actionURL := nc.PostURL
-	commentLabel := "评论"
+	commentLabel := T(nc.Lang, "Comment")
 	switch nc.Type {
 	case "owner":
-		headline = "你的文章收到了新评论"
-		intro = fmt.Sprintf("%s 在《%s》发表了新评论。", escape(nc.Author), escape(nc.PostTitle))
+		headline = T(nc.Lang, "Your post received a new comment")
+		intro = fmt.Sprintf(T(nc.Lang, "%s commented on your post \"%s\"."), escape(nc.Author), escape(nc.PostTitle))
 	case "guest":
-		headline = "你的评论收到了新回复"
-		intro = fmt.Sprintf("%s 回复了你在《%s》下的评论。", escape(nc.Author), escape(nc.PostTitle))
-		actionLabel = "查看回复"
-		commentLabel = "回复"
+		headline = T(nc.Lang, "Your comment received a new reply")
+		intro = fmt.Sprintf(T(nc.Lang, "%s replied to your comment on \"%s\"."), escape(nc.Author), escape(nc.PostTitle))
+		actionLabel = T(nc.Lang, "View reply")
+		commentLabel = T(nc.Lang, "Reply")
 	case "pending":
-		headline = "有待审核的评论"
-		intro = fmt.Sprintf("《%s》收到一条等待审核的评论。", escape(nc.PostTitle))
-		actionLabel = "前往审核"
+		headline = T(nc.Lang, "There is a comment pending review")
+		intro = fmt.Sprintf(T(nc.Lang, "\"%s\" received a comment awaiting review."), escape(nc.PostTitle))
+		actionLabel = T(nc.Lang, "Go to review")
 		actionURL = strings.TrimRight(nc.SiteURL, "/") + "/admin/comments"
 	case "test":
-		headline = "邮件发送测试"
-		intro = "这是一封用于验证 SMTP 配置和邮件外观的测试邮件。"
-		actionLabel = "访问站点"
+		headline = T(nc.Lang, "Email send test")
+		intro = T(nc.Lang, "This is a test email to verify SMTP configuration and email appearance.")
+		actionLabel = T(nc.Lang, "Visit site")
 		actionURL = nc.SiteURL
-		commentLabel = "测试内容"
+		commentLabel = T(nc.Lang, "Test content")
 	default:
 		return nil, fmt.Errorf("comment-notifier: unknown notification type %q", nc.Type)
 	}
 	parentBlock := ""
 	if nc.Type == "guest" {
-		parentBlock = `<p style="margin:0 0 8px;color:#777;">你此前的评论：</p><div style="margin:0 0 18px;padding:14px 16px;border-left:3px solid #70c9d4;border-radius:4px;color:#777;background:#f5f7f8;word-break:break-word;">` + escapeLines(nc.ParentContent) + `</div>`
+		parentBlock = `<p style="margin:0 0 8px;color:#777;">` + html.EscapeString(T(nc.Lang, "Your previous comment:")) + `</p><div style="margin:0 0 18px;padding:14px 16px;border-left:3px solid #70c9d4;border-radius:4px;color:#777;background:#f5f7f8;word-break:break-word;">` + escapeLines(nc.ParentContent) + `</div>`
 	}
 	return map[string]string{
 		"{notification_type}":    escape(nc.Type),
@@ -258,7 +255,6 @@ func queueNotification(sc smtpConfig, nc notifyContext, templateSource string) e
 	}
 }
 
-// sendMail sends an HTML email via SMTP.
 func sendMail(sc smtpConfig, to, subject, htmlBody string) error {
 	recipient, err := netmail.ParseAddress(strings.TrimSpace(to))
 	if err != nil {
@@ -268,7 +264,6 @@ func sendMail(sc smtpConfig, to, subject, htmlBody string) error {
 	addr := net.JoinHostPort(sc.Host, strconv.Itoa(sc.Port))
 	from := sc.FromEmail
 
-	// Build the email message.
 	var msg strings.Builder
 	msg.WriteString("From: " + formatAddress(sc.FromName, from) + "\r\n")
 	msg.WriteString("To: " + formatAddress("", to) + "\r\n")
@@ -280,7 +275,6 @@ func sendMail(sc smtpConfig, to, subject, htmlBody string) error {
 	msg.WriteString("\r\n")
 	msg.WriteString(htmlBody)
 
-	// Connect and send based on security mode.
 	switch sc.Security {
 	case "ssl":
 		return sendMailTLS(addr, sc.Host, sc.Username, sc.Password, from, to, []byte(msg.String()))
@@ -291,7 +285,6 @@ func sendMail(sc smtpConfig, to, subject, htmlBody string) error {
 	}
 }
 
-// safeSendMail sends an email, logging errors instead of propagating them.
 func safeSendMail(sc smtpConfig, to, subject, htmlBody string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -303,7 +296,6 @@ func safeSendMail(sc smtpConfig, to, subject, htmlBody string) {
 	}
 }
 
-// sendMailTLS connects via TLS (port 465) and sends the email.
 func sendMailTLS(addr, host, username, password, from, to string, msg []byte) error {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: smtpTimeout}, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
 	if err != nil {
@@ -323,7 +315,6 @@ func sendMailTLS(addr, host, username, password, from, to string, msg []byte) er
 	return smtpSend(client, host, username, password, from, to, msg)
 }
 
-// sendMailSTARTTLS connects plain, upgrades to TLS, and sends the email.
 func sendMailSTARTTLS(addr, host, username, password, from, to string, msg []byte) error {
 	conn, err := net.DialTimeout("tcp", addr, smtpTimeout)
 	if err != nil {
@@ -347,7 +338,6 @@ func sendMailSTARTTLS(addr, host, username, password, from, to string, msg []byt
 	return smtpSend(client, host, username, password, from, to, msg)
 }
 
-// sendMailPlain connects without encryption and sends the email.
 func sendMailPlain(addr, host, username, password, from, to string, msg []byte) error {
 	conn, err := net.DialTimeout("tcp", addr, smtpTimeout)
 	if err != nil {
@@ -367,7 +357,6 @@ func sendMailPlain(addr, host, username, password, from, to string, msg []byte) 
 	return smtpSend(client, host, username, password, from, to, msg)
 }
 
-// smtpSend authenticates and sends the message via an smtp.Client.
 func smtpSend(client *smtp.Client, host, username, password, from, to string, msg []byte) error {
 	if username != "" && password != "" {
 		auth := smtp.PlainAuth("", username, password, host)
@@ -394,7 +383,6 @@ func smtpSend(client *smtp.Client, host, username, password, from, to string, ms
 	return client.Quit()
 }
 
-// formatAddress formats an email address with an optional display name.
 func formatAddress(name, email string) string {
 	if name == "" {
 		return email
@@ -402,17 +390,14 @@ func formatAddress(name, email string) string {
 	return fmt.Sprintf("%s <%s>", mimeEncodeText(name), email)
 }
 
-// mimeEncodeSubject encodes a subject line as UTF-8 encoded-words.
 func mimeEncodeSubject(s string) string {
 	return "=?UTF-8?B?" + encodeBase64(s) + "?="
 }
 
-// mimeEncodeText encodes text as UTF-8 encoded-words for display names.
 func mimeEncodeText(s string) string {
 	return "=?UTF-8?B?" + encodeBase64(s) + "?="
 }
 
-// encodeBase64 returns a base64 encoding of the string.
 func encodeBase64(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }

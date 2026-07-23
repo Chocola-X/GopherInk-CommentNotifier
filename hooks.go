@@ -41,7 +41,6 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		return value, nil
 	}
 
-	// Get content info via Runtime API.
 	content, err := notifierContentByID(ctx, rt, comment.CID)
 	if err != nil {
 		log.Printf("[comment-notifier] query content %d: %v", comment.CID, err)
@@ -57,18 +56,18 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 
+	lang := rt.Language(ctx)
 	commentURL, _ := rt.CommentURL(ctx, comment.COID)
 	commentAvatarURL := pluginAvatarURL(ctx, rt, comment.Mail, 72)
 
-	// Deduplicate recipients by normalized email.
 	recipients := make(map[string]notifyContext)
 
 	switch comment.Status {
 	case "approved":
-		// Notify content author if the commenter is not the author.
 		if cfg["notify_owner"] == "1" && comment.AuthorID != content.AuthorID && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
 				Type:            "owner",
+				Lang:            lang,
 				ToEmail:         authorUser.Mail,
 				ToName:          authorUser.ScreenName,
 				PostTitle:       content.Title,
@@ -88,6 +87,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 			if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) {
 				recipients[strings.ToLower(parent.Mail)] = notifyContext{
 					Type:            "guest",
+					Lang:            lang,
 					ToEmail:         parent.Mail,
 					ToName:          parent.Author,
 					PostTitle:       content.Title,
@@ -112,6 +112,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 			if adminMail != "" && !mailEqual(adminMail, comment.Mail) {
 				recipients[strings.ToLower(adminMail)] = notifyContext{
 					Type:            "pending",
+					Lang:            lang,
 					ToEmail:         adminMail,
 					PostTitle:       content.Title,
 					PostURL:         commentURL,
@@ -179,6 +180,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	siteURL, _ := rt.Option(ctx, "base_url")
 	siteURL = strings.TrimRight(siteURL, "/")
 
+	lang := rt.Language(ctx)
 	commentURL, _ := rt.CommentURL(ctx, comment.COID)
 	commentAvatarURL := pluginAvatarURL(ctx, rt, comment.Mail, 72)
 
@@ -186,11 +188,11 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 	recipients := make(map[string]notifyContext)
 
 	if comment.Parent > 0 && cfg["notify_parent"] == "1" {
-		// Notify parent commenter.
 		parent, err := notifierCommentByID(ctx, rt, comment.Parent)
 		if err == nil && parent.Mail != "" && !mailEqual(parent.Mail, comment.Mail) && !mailEqual(parent.Mail, adminMail) {
 			recipients[strings.ToLower(parent.Mail)] = notifyContext{
 				Type:            "guest",
+				Lang:            lang,
 				ToEmail:         parent.Mail,
 				ToName:          parent.Author,
 				PostTitle:       content.Title,
@@ -207,10 +209,10 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 			}
 		}
 	} else if cfg["notify_owner"] == "1" {
-		// Notify content author.
 		if authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) && !mailEqual(authorUser.Mail, adminMail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
 				Type:            "owner",
+				Lang:            lang,
 				ToEmail:         authorUser.Mail,
 				ToName:          authorUser.ScreenName,
 				PostTitle:       content.Title,
