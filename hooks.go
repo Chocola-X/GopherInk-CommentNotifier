@@ -41,13 +41,10 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		return value, nil
 	}
 
-	content, err := notifierContentByID(ctx, rt, comment.CID)
-	if err != nil {
-		log.Printf("[comment-notifier] query content %d: %v", comment.CID, err)
-		return value, nil
-	}
-
-	authorUser, _ := notifierUserByID(ctx, rt, content.AuthorID)
+	// PublicComment carries the parent content title and owner UID via the
+	// core join, so no extra content query is needed for the common path.
+	postTitle := notifierPostTitle(ctx, rt, comment)
+	authorUser, _ := notifierUserByID(ctx, rt, comment.OwnerID)
 
 	siteTitle, _ := rt.Option(ctx, "site_title")
 	if siteTitle == "" {
@@ -64,13 +61,13 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 
 	switch comment.Status {
 	case "approved":
-		if cfg["notify_owner"] == "1" && comment.AuthorID != content.AuthorID && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
+		if cfg["notify_owner"] == "1" && comment.AuthorID != comment.OwnerID && authorUser.Mail != "" && !mailEqual(authorUser.Mail, comment.Mail) {
 			recipients[strings.ToLower(authorUser.Mail)] = notifyContext{
 				Type:            "owner",
 				Lang:            lang,
 				ToEmail:         authorUser.Mail,
 				ToName:          authorUser.ScreenName,
-				PostTitle:       content.Title,
+				PostTitle:       postTitle,
 				PostURL:         commentURL,
 				Author:          comment.Author,
 				AuthorAvatarURL: commentAvatarURL,
@@ -90,7 +87,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 					Lang:            lang,
 					ToEmail:         parent.Mail,
 					ToName:          parent.Author,
-					PostTitle:       content.Title,
+					PostTitle:       postTitle,
 					PostURL:         commentURL,
 					Author:          comment.Author,
 					AuthorAvatarURL: commentAvatarURL,
@@ -114,7 +111,7 @@ func afterCommentSave(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 					Type:            "pending",
 					Lang:            lang,
 					ToEmail:         adminMail,
-					PostTitle:       content.Title,
+					PostTitle:       postTitle,
 					PostURL:         commentURL,
 					Author:          comment.Author,
 					AuthorAvatarURL: commentAvatarURL,
@@ -165,13 +162,8 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 		return value, nil
 	}
 
-	content, err := notifierContentByID(ctx, rt, comment.CID)
-	if err != nil {
-		log.Printf("[comment-notifier] query content %d: %v", comment.CID, err)
-		return value, nil
-	}
-
-	authorUser, _ := notifierUserByID(ctx, rt, content.AuthorID)
+	postTitle := notifierPostTitle(ctx, rt, comment)
+	authorUser, _ := notifierUserByID(ctx, rt, comment.OwnerID)
 
 	siteTitle, _ := rt.Option(ctx, "site_title")
 	if siteTitle == "" {
@@ -195,7 +187,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 				Lang:            lang,
 				ToEmail:         parent.Mail,
 				ToName:          parent.Author,
-				PostTitle:       content.Title,
+				PostTitle:       postTitle,
 				PostURL:         commentURL,
 				Author:          comment.Author,
 				AuthorAvatarURL: commentAvatarURL,
@@ -215,7 +207,7 @@ func afterCommentMark(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 				Lang:            lang,
 				ToEmail:         authorUser.Mail,
 				ToName:          authorUser.ScreenName,
-				PostTitle:       content.Title,
+				PostTitle:       postTitle,
 				PostURL:         commentURL,
 				Author:          comment.Author,
 				AuthorAvatarURL: commentAvatarURL,
@@ -259,15 +251,20 @@ func notifierCommentByID(ctx context.Context, rt *plugin.Runtime, id int64) (plu
 	return comments[0], nil
 }
 
-func notifierContentByID(ctx context.Context, rt *plugin.Runtime, id int64) (plugin.PublicContent, error) {
-	contents, _, err := rt.ListContents(ctx, plugin.PublicContentQuery{CID: id, Type: "all", Status: "all", IncludeDrafts: true, Limit: 1})
-	if err != nil {
-		return plugin.PublicContent{}, err
+// notifierPostTitle returns the title of the content a comment belongs to.
+// PublicComment.Title is populated by the core content join, so the common
+// path needs no extra query. When the join left it empty (for example the
+// content was removed) it falls back to a single content lookup.
+func notifierPostTitle(ctx context.Context, rt *plugin.Runtime, comment plugin.PublicComment) string {
+	if title := strings.TrimSpace(comment.Title); title != "" {
+		return title
 	}
-	if len(contents) == 0 {
-		return plugin.PublicContent{}, errNotifierRecordNotFound
+	if comment.CID > 0 {
+		if contents, _, err := rt.ListContents(ctx, plugin.PublicContentQuery{CID: comment.CID, Type: "all", Status: "all", IncludeDrafts: true, Limit: 1}); err == nil && len(contents) > 0 {
+			return contents[0].Title
+		}
 	}
-	return contents[0], nil
+	return ""
 }
 
 func notifierUserByID(ctx context.Context, rt *plugin.Runtime, id int64) (plugin.PublicUser, error) {
