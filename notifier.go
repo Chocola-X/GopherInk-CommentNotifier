@@ -23,6 +23,7 @@ func (commentNotifier) Info() plugin.PluginInfo {
 	return plugin.PluginInfo{
 		Name:             pluginName,
 		Version:          "0.2.1",
+		Author:           "GopherInk",
 		Description:      "Send email notifications when a comment is posted or approved.",
 		RequireGopherInk: "0.5.0",
 	}

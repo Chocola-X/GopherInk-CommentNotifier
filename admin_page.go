@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	htmltemplate "html/template"
 	"strings"
@@ -125,10 +126,10 @@ func (commentNotifier) HandleAdminPageAction(ctx context.Context, rt *plugin.Run
 	case "save-template":
 		source := firstFormValue(form, "email_template")
 		if strings.TrimSpace(source) == "" {
-			return plugin.AdminPageActionResult{}, fmt.Errorf(T(lang, "Email template cannot be empty; to restore the built-in template, use \"Restore default\""))
+			return plugin.AdminPageActionResult{}, errors.New(T(lang, "Email template cannot be empty; to restore the built-in template, use \"Restore default\""))
 		}
 		if len([]byte(source)) > maxTemplateBytes {
-			return plugin.AdminPageActionResult{}, fmt.Errorf(T(lang, "Email template cannot exceed 48 KiB"))
+			return plugin.AdminPageActionResult{}, errors.New(T(lang, "Email template cannot exceed 48 KiB"))
 		}
 		return plugin.AdminPageActionResult{
 			ConfigPatch: map[string]string{"email_template": source},
@@ -140,7 +141,7 @@ func (commentNotifier) HandleAdminPageAction(ctx context.Context, rt *plugin.Run
 			Notice:      plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: T(lang, "Email appearance has been restored to the default template.")},
 		}, nil
 	default:
-		return plugin.AdminPageActionResult{}, fmt.Errorf(T(lang, "Unsupported email appearance action"))
+		return plugin.AdminPageActionResult{}, errors.New(T(lang, "Unsupported email appearance action"))
 	}
 }
 
